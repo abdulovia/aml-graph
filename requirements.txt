@@ -1,0 +1,30 @@
+# Core numerics / data
+numpy>=1.26,<2.1
+pandas>=2.1
+polars>=1.0
+pyarrow>=15.0
+scikit-learn>=1.4
+
+# Graph
+networkx>=3.2
+
+# Models
+lightgbm>=4.3
+torch>=2.2
+torch-geometric>=2.5
+
+# Explainability / narrative (optional live call)
+anthropic>=0.39
+
+# Viz / demo
+matplotlib>=3.8
+streamlit>=1.33
+
+# Data access
+kaggle>=1.6
+
+# Dev / CI
+ruff>=0.5
+pytest>=8.0
+jupyter>=1.0
+nbconvert>=7.0

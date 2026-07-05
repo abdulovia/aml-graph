@@ -1,0 +1,33 @@
+[project]
+name = "aml-graph"
+version = "0.1.0"
+description = "Explainable detection of money-laundering schemes via quasi-temporal graph motifs."
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["notebooks", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP", "D"]
+ignore = [
+    "D100", # missing docstring in public module (notebooks/scripts)
+    "D104", # missing docstring in public package
+    "D203", # 1 blank line before class docstring (conflicts with D211)
+    "D205", # 1 blank line required between summary and description
+    "D213", # multi-line docstring summary on 2nd line (conflicts with D212)
+    "D401", # imperative-mood first line (too pedantic for this codebase)
+    "B905", # zip() without strict= (equal-length iterables by construction)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D103", "D100"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["."]

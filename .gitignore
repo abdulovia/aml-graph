@@ -1,0 +1,35 @@
+# --- secrets / credentials (NEVER commit) ---
+.env
+*.key
+kaggle.json
+access_token
+secrets/
+
+# --- python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- data (large / licensed, pulled via Kaggle) ---
+data/raw/
+data/processed/
+*.csv
+*.parquet
+*.txt.gz
+
+# --- outputs kept selectively (figures + metrics are tracked, see below) ---
+mlruns/
+wandb/
+
+# keep tracked artifacts even though *.csv is ignored above
+!outputs/metrics.json
+
+# --- os / editor ---
+.DS_Store
+.vscode/
+.idea/
