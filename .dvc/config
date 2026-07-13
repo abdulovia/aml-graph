@@ -1,0 +1,13 @@
+# DVC configuration.
+#
+# A local, no-op remote so `dvc push` / `dvc pull` work without cloud
+# credentials in this MVP. Point `url` at S3/GCS/Azure for a real deployment,
+# e.g.  dvc remote modify storage url s3://my-bucket/aml-graph
+#
+# The dataset itself is DVC-tracked, NOT committed to git (see data/README.md).
+[core]
+    remote = storage
+    autostage = true
+
+['remote "storage"']
+    url = /tmp/aml-graph-dvc-store
