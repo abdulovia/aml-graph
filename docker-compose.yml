@@ -1,0 +1,47 @@
+# Local orchestration for the AML-Graph demo.
+#
+# Secrets are never committed — they are read from the host environment:
+#   export ANTHROPIC_API_KEY=sk-...      # optional: enables LLM narratives
+#   export KAGGLE_API_TOKEN=...          # optional: enables data download
+#
+# Usage:
+#   docker compose up demo      # Streamlit UI on http://localhost:8501
+#   docker compose up api       # FastAPI service on http://localhost:8000
+services:
+  demo:
+    build: .
+    image: aml-graph:latest
+    command:
+      - streamlit
+      - run
+      - app/streamlit_app.py
+      - --server.port=8501
+      - --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      # Passed through from the host; unset is fine (features degrade gracefully).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN:-}
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+
+  api:
+    build: .
+    image: aml-graph:latest
+    command:
+      - uvicorn
+      - app.api:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    ports:
+      - "8000:8000"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN:-}
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs

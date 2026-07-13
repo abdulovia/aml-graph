@@ -1,0 +1,19 @@
+# Pre-commit hooks for AML-Graph.
+#   pip install pre-commit && pre-commit install
+#   pre-commit run --all-files
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.22
+    hooks:
+      - id: ruff            # lint
+        args: [--fix]
+      - id: ruff-format     # format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=1024]
