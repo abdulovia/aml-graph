@@ -1,0 +1,104 @@
+{
+  "config": {
+    "sample_edges": 250000,
+    "temporal_train_frac": 0.7,
+    "min_fan_degree": 3,
+    "precision_at_k": [
+      50,
+      100,
+      500,
+      1000
+    ],
+    "fixed_recall": 0.5,
+    "windows": {
+      "fan_window_h": 24.0,
+      "cycle_window_h": 168.0,
+      "gather_scatter_window_h": 72.0
+    }
+  },
+  "GNN": {
+    "model": "GNN",
+    "threshold": 0.9192379713058472,
+    "minority_f1": 0.2477432296890672,
+    "pr_auc": 0.18948116404957277,
+    "n_test": 75000,
+    "n_illicit": 2304,
+    "p@50": 0.62,
+    "p@100": 0.71,
+    "p@500": 0.518,
+    "p@1000": 0.386,
+    "target_recall": 0.5,
+    "review_fraction": 0.13510666666666668,
+    "alert_reduction": 0.8648933333333333,
+    "recall_by_motif": {
+      "cycle": 0.26618705035971224,
+      "gather_scatter": 0.336322869955157,
+      "fan_out": 0.10975609756097561,
+      "random": 0.2857142857142857,
+      "scatter_gather": 0.3829113924050633,
+      "bipartite": 0.08653846153846154,
+      "fan_in": 0.46107784431137727,
+      "stack": 0.10697674418604651
+    }
+  },
+  "LightGBM": {
+    "model": "LightGBM",
+    "threshold": 0.8480172034409444,
+    "minority_f1": 0.4190894130554032,
+    "pr_auc": 0.3787433047865772,
+    "n_test": 75000,
+    "n_illicit": 2304,
+    "p@50": 1.0,
+    "p@100": 1.0,
+    "p@500": 0.858,
+    "p@1000": 0.648,
+    "target_recall": 0.5,
+    "review_fraction": 0.08125333333333333,
+    "alert_reduction": 0.9187466666666667,
+    "recall_by_motif": {
+      "cycle": 0.33093525179856115,
+      "gather_scatter": 0.5762331838565022,
+      "fan_out": 0.5365853658536586,
+      "random": 0.1092436974789916,
+      "scatter_gather": 0.6645569620253164,
+      "bipartite": 0.07692307692307693,
+      "fan_in": 0.6526946107784432,
+      "stack": 0.07441860465116279
+    }
+  },
+  "Random": {
+    "model": "Random",
+    "threshold": 0.5543376314007776,
+    "minority_f1": 0.060600992362156436,
+    "pr_auc": 0.032503510974655356,
+    "n_test": 75000,
+    "n_illicit": 2304,
+    "p@50": 0.08,
+    "p@100": 0.07,
+    "p@500": 0.04,
+    "p@1000": 0.038,
+    "target_recall": 0.5,
+    "review_fraction": 0.4802133333333333,
+    "alert_reduction": 0.5197866666666666,
+    "recall_by_motif": {
+      "cycle": 0.5467625899280576,
+      "gather_scatter": 0.4349775784753363,
+      "fan_out": 0.4329268292682927,
+      "random": 0.47058823529411764,
+      "scatter_gather": 0.4430379746835443,
+      "bipartite": 0.5576923076923077,
+      "fan_in": 0.47904191616766467,
+      "stack": 0.5023255813953489
+    }
+  },
+  "trace_facts": {
+    "motif_type": "cycle",
+    "n_accounts": 10,
+    "n_transactions": 10,
+    "total_amount": 2280382.15,
+    "span_hours": 87.8,
+    "confidence": 0.5,
+    "focus_account": "0024856_8090E8EB0"
+  },
+  "narrative": "**Suspicious Activity Narrative**\n\nAccount 0024856_8090E8EB0 participated in a 10-account transaction cycle totaling $2,280,382.15 over 87.8 hours (approximately 3.7 days). The pattern involved 10 transactions distributed across multiple accounts, consistent with potential layering or value circulation schemes. However, confidence level is moderate (0.5), suggesting incomplete pattern matching or ambiguous behavioral indicators.\n\n**Recommendation:** Enhanced Review\n\nInitiate deeper investigation into account relationships, transaction purposes, and beneficial ownership before SAR determination."
+}
