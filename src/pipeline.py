@@ -187,8 +187,22 @@ def pick_trace(
     return eids, facts
 
 
-def run_mvp(cfg: RunConfig | None = None, use_llm: bool = False) -> dict[str, object]:
-    """Run the entire MVP: data -> graph -> motifs -> models -> metrics -> figures."""
+def run_mvp(
+    cfg: RunConfig | None = None, use_llm: bool = False, track: bool = False
+) -> dict[str, object]:
+    """Run the entire MVP: data -> graph -> motifs -> models -> metrics -> figures.
+
+    Args:
+        cfg: Run configuration; defaults to :data:`src.config.DEFAULT_RUN`.
+        use_llm: Generate the narrative via the Anthropic API instead of the
+            deterministic template.
+        track: Log metrics and figures to MLflow (no-op unless mlflow is
+            installed and ``MLFLOW_TRACKING_URI`` is set).
+
+    Returns:
+        The full result dict (also written to ``outputs/metrics.json``).
+
+    """
     config.set_seeds()
     config.ensure_dirs()
     cfg = cfg or config.DEFAULT_RUN
@@ -218,4 +232,9 @@ def run_mvp(cfg: RunConfig | None = None, use_llm: bool = False) -> dict[str, ob
     result["trace_facts"] = asdict(facts)
     result["narrative"] = narrative
     config.METRICS_JSON.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+
+    if track:  # optional MLflow logging; safe no-op when unavailable
+        from src.tracking import log_run
+
+        log_run(result, config.FIGURES)
     return result
