@@ -1,0 +1,56 @@
+# Declarative run configuration for AML-Graph (Hydra/OmegaConf-style).
+#
+# Mirrors the dataclasses in src/config.py (RunConfig + MotifWindows). This file
+# documents a run and can be loaded into a RunConfig via src.config_loader.load;
+# the pipeline still defaults to src.config.DEFAULT_RUN unless a config is passed.
+
+# --- Core run knobs (src.config.RunConfig) ---------------------------------
+run:
+  sample_edges: 250000        # cap on transactions loaded for the MVP
+  temporal_train_frac: 0.7    # fraction of time-sorted edges used for training
+  min_fan_degree: 3           # min in/out degree for a fan-in / fan-out motif
+  precision_at_k: [50, 100, 500, 1000]
+  fixed_recall: 0.5           # recall level at which alert-reduction is reported
+
+# --- Motif detection windows in hours (src.config.MotifWindows) ------------
+windows:
+  fan_window_h: 24.0
+  cycle_window_h: 168.0       # one week
+  gather_scatter_window_h: 72.0
+
+# --- Reproducibility -------------------------------------------------------
+seed: 42
+
+# --- Filesystem layout (relative to repo root; see src.config paths) -------
+paths:
+  data_raw: data/raw
+  data_processed: data/processed
+  outputs: outputs
+  figures: outputs/figures
+  metrics_json: outputs/metrics.json
+  scored_edges: data/processed/edges_scored.parquet
+
+# --- Dataset identifiers ---------------------------------------------------
+dataset:
+  kaggle: ealtman2019/ibm-transactions-for-anti-money-laundering-aml
+  transactions_csv: HI-Small_Trans.csv
+  patterns_txt: HI-Small_Patterns.txt
+
+# --- Model hyper-parameters (documentation of the defaults used) -----------
+model:
+  lightgbm:
+    n_estimators: 300
+    learning_rate: 0.05
+    num_leaves: 63
+    subprocess_isolation: true   # src/lgbm_worker.py avoids the OpenMP clash
+  gnn:
+    architecture: GraphSAGE
+    hidden_dim: 64
+    n_layers: 2
+    epochs: 30
+    learning_rate: 0.01
+
+# --- Narrative / LLM (secrets read from env, never committed) --------------
+narrative:
+  use_llm: false
+  model: claude-haiku-4-5       # cheapest tier; ANTHROPIC_API_KEY from env
