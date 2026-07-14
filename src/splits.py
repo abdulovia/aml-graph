@@ -50,6 +50,49 @@ def temporal_split(times: np.ndarray, train_frac: float) -> TemporalSplit:
     return TemporalSplit(boundary, train_idx, test_idx)
 
 
+@dataclass
+class TriTemporalSplit:
+    """A temporal train/val/test split (tr < val < test in time).
+
+    Attributes:
+        tr_idx: Inner-train indices (earliest).
+        val_idx: Validation indices (for early stopping and threshold choice).
+        test_idx: Test indices (latest).
+
+    """
+
+    tr_idx: np.ndarray
+    val_idx: np.ndarray
+    test_idx: np.ndarray
+
+
+def temporal_tri_split(
+    times: np.ndarray, train_frac: float, val_frac_of_train: float = 0.2
+) -> TriTemporalSplit:
+    """Split edges into strictly time-ordered inner-train / val / test slices.
+
+    The test boundary is the ``train_frac`` quantile; within the resulting train
+    portion, the latest ``val_frac_of_train`` (by time) becomes validation so the
+    F1 threshold and early stopping never see the test set.
+
+    Args:
+        times: 1-D array of edge timestamps (epoch seconds).
+        train_frac: Fraction of the timeline assigned to train (rest is test).
+        val_frac_of_train: Fraction of the train timeline held out for validation.
+
+    Returns:
+        A :class:`TriTemporalSplit`; guarantees ``max(t_tr) <= min(t_val)`` and
+        ``max(t_val) <= min(t_test)``.
+
+    """
+    base = temporal_split(times, train_frac)
+    train_idx = base.train_idx
+    val_boundary = float(np.quantile(times[train_idx], 1.0 - val_frac_of_train))
+    tr_idx = train_idx[times[train_idx] <= val_boundary]
+    val_idx = train_idx[times[train_idx] > val_boundary]
+    return TriTemporalSplit(tr_idx, val_idx, base.test_idx)
+
+
 def assert_no_leakage(train_times: np.ndarray, test_times: np.ndarray) -> None:
     """Raise ``AssertionError`` if any test edge is not strictly after train.
 

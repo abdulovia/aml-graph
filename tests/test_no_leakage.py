@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from src.splits import assert_no_leakage, temporal_split
+from src.splits import assert_no_leakage, temporal_split, temporal_tri_split
 
 
 def test_split_is_strictly_temporal():
@@ -38,3 +38,18 @@ def test_assert_no_leakage_flags_overlap():
 def test_invalid_train_frac_raises():
     with pytest.raises(ValueError):
         temporal_split(np.arange(10, dtype=float), train_frac=1.5)
+
+
+def test_tri_split_is_strictly_ordered_and_complete():
+    times = np.arange(1000, dtype=float)
+    sp = temporal_tri_split(times, train_frac=0.7, val_frac_of_train=0.2)
+    # strict temporal ordering tr < val < test
+    assert times[sp.tr_idx].max() <= times[sp.val_idx].min()
+    assert times[sp.val_idx].max() <= times[sp.test_idx].min()
+    assert_no_leakage(times[sp.tr_idx], times[sp.val_idx])
+    assert_no_leakage(times[sp.val_idx], times[sp.test_idx])
+    # partition covers everything without overlap
+    allidx = np.concatenate([sp.tr_idx, sp.val_idx, sp.test_idx])
+    assert sorted(allidx.tolist()) == list(range(1000))
+    # validation is a real, non-empty holdout carved from the training portion
+    assert sp.val_idx.size > 0 and sp.tr_idx.size > 0
