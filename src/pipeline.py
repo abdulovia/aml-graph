@@ -20,9 +20,9 @@ from src.baseline import train_lightgbm
 from src.config import RunConfig
 from src.data_io import MotifLabel
 from src.features import EdgeDataset
-from src.gnn import build_graph_tensors, train_gnn
+from src.gnn import train_gnn
 from src.narrative import ChainFacts, llm_narrative, template_narrative
-from src.splits import assert_no_leakage, temporal_split
+from src.splits import assert_no_leakage, temporal_tri_split
 
 
 def load_and_prepare(cfg: RunConfig) -> tuple[pl.DataFrame, list[MotifLabel]]:
@@ -67,29 +67,41 @@ def motif_participation(ds: EdgeDataset) -> dict[str, tuple[int, int]]:
 
 def run_models(
     ds: EdgeDataset, cfg: RunConfig
-) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray]:
-    """Train baseline + GNN on a leakage-free temporal split.
+) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray, dict[str, float]]:
+    """Train baseline + GNN on a leakage-free temporal tri-split.
+
+    Models train on the inner-train slice only; the validation slice (strictly
+    between train and test in time) is used to pick each model's F1 threshold —
+    never the test set. The GNN additionally uses validation for early stopping.
 
     Returns:
-        (scores_by_model, y_test, test_edge_ids) where scores align with y_test.
+        ``(scores_by_model, y_test, test_edge_ids, thresholds)`` where the test
+        scores align with ``y_test`` and ``thresholds`` maps model -> the
+        F1-optimal threshold chosen on validation.
 
     """
-    split = temporal_split(ds.times, cfg.temporal_train_frac)
-    assert_no_leakage(ds.times[split.train_idx], ds.times[split.test_idx])
+    sp = temporal_tri_split(ds.times, cfg.temporal_train_frac)
+    assert_no_leakage(ds.times[sp.tr_idx], ds.times[sp.val_idx])
+    assert_no_leakage(ds.times[sp.val_idx], ds.times[sp.test_idx])
 
-    x_train, x_test = ds.X[split.train_idx], ds.X[split.test_idx]
-    y_train, y_test = ds.y[split.train_idx], ds.y[split.test_idx]
+    y_val, y_test = ds.y[sp.val_idx], ds.y[sp.test_idx]
 
-    _, lgbm_scores = train_lightgbm(x_train, y_train, x_test)
+    # LightGBM: train on inner-train, score validation (for threshold) and test.
+    _, lgbm_val = train_lightgbm(ds.X[sp.tr_idx], ds.y[sp.tr_idx], ds.X[sp.val_idx])
+    _, lgbm_test = train_lightgbm(ds.X[sp.tr_idx], ds.y[sp.tr_idx], ds.X[sp.test_idx])
 
-    gt = build_graph_tensors(ds.src, ds.dst, ds.X, ds.y, split.train_idx, split.test_idx)
-    gnn_scores = train_gnn(gt)
+    gnn_val, gnn_test = train_gnn(ds.src, ds.dst, ds.X, ds.y, sp.tr_idx, sp.val_idx, sp.test_idx)
 
     rng = np.random.default_rng(config.SEED)
-    random_scores = rng.random(y_test.size)
+    rand_val = rng.random(y_val.size)
+    rand_test = rng.random(y_test.size)
 
-    scores = {"GNN": gnn_scores, "LightGBM": lgbm_scores, "Random": random_scores}
-    return scores, y_test, ds.edge_ids[split.test_idx]
+    val_scores = {"GNN": gnn_val, "LightGBM": lgbm_val, "Random": rand_val}
+    test_scores = {"GNN": gnn_test, "LightGBM": lgbm_test, "Random": rand_test}
+    thresholds = {
+        name: metrics.best_f1_threshold(y_val, val_scores[name])[0] for name in test_scores
+    }
+    return test_scores, y_test, ds.edge_ids[sp.test_idx], thresholds
 
 
 def compute_metrics(
@@ -98,11 +110,12 @@ def compute_metrics(
     test_edge_ids: np.ndarray,
     gt_motif_map: dict[str, set[int]],
     cfg: RunConfig,
+    thresholds: dict[str, float],
 ) -> dict[str, object]:
-    """Assemble the full metrics dict for both models (thresholds tuned on test-safe scores)."""
+    """Assemble the full metrics dict; F1 uses validation-chosen thresholds."""
     result: dict[str, object] = {"config": asdict(cfg)}
     for name, s in scores.items():
-        thr, _ = metrics.best_f1_threshold(y_test, s)
+        thr = thresholds[name]
         summary = metrics.summarise(name, y_test, s, thr, cfg.precision_at_k, cfg.fixed_recall)
         y_pred = (s >= thr).astype(int)
         summary["recall_by_motif"] = metrics.recall_by_motif(
@@ -212,8 +225,8 @@ def run_mvp(
     ds = make_dataset(g, cfg)
 
     gt_motif_map = groundtruth_motif_map(patterns, ds)
-    scores, y_test, test_edge_ids = run_models(ds, cfg)
-    result = compute_metrics(scores, y_test, test_edge_ids, gt_motif_map, cfg)
+    scores, y_test, test_edge_ids, thresholds = run_models(ds, cfg)
+    result = compute_metrics(scores, y_test, test_edge_ids, gt_motif_map, cfg, thresholds)
 
     # figures
     viz.fig01_eda(df)
