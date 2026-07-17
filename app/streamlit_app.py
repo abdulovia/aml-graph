@@ -48,6 +48,7 @@ def ego_graph(df: pl.DataFrame, account: str, hops: int = 1) -> nx.MultiDiGraph:
             row["dst"],
             edge_id=row["edge_id"],
             amount=row["amount"],
+            t=row["t"],
             score=row.get("score", 0.0),
             is_laundering=row.get("is_laundering", 0),
         )
@@ -82,10 +83,24 @@ def main() -> None:
         )
         return
 
-    accounts = sorted(set(df.get_column("src").to_list()) | set(df.get_column("dst").to_list()))
+    # Rank accounts by their riskiest incident edge so the demo opens on a
+    # genuinely suspicious account instead of an arbitrary alphabetical one.
+    risk = (
+        pl.concat(
+            [
+                df.select(pl.col("src").alias("account"), "score"),
+                df.select(pl.col("dst").alias("account"), "score"),
+            ]
+        )
+        .group_by("account")
+        .agg(pl.col("score").max().alias("max_score"))
+        .sort("max_score", descending=True)
+    )
+    accounts = risk.get_column("account").to_list()
+
     col1, col2 = st.columns([1, 3])
     with col1:
-        account = st.selectbox("Account", accounts)
+        account = st.selectbox("Account (riskiest first)", accounts)
         threshold = st.slider("Risk threshold", 0.0, 1.0, 0.5, 0.05)
         hops = st.slider("Neighbourhood hops", 1, 2, 1)
 
@@ -93,16 +108,22 @@ def main() -> None:
     with col2:
         st.pyplot(draw(g, account, threshold))
 
-    chain = {int(d["edge_id"]) for _, _, d in g.edges(data=True) if d.get("score", 0) >= threshold}
-    if chain:
-        amounts = [d["amount"] for _, _, d in g.edges(data=True) if int(d["edge_id"]) in chain]
+    chain_edges = [d for _, _, d in g.edges(data=True) if d.get("score", 0) >= threshold]
+    if chain_edges:
+        amounts = [d["amount"] for d in chain_edges]
+        scores = [d["score"] for d in chain_edges]
+        times = [d["t"] for d in chain_edges]
+        chain_accounts = {
+            n for u, v, d in g.edges(data=True) if d.get("score", 0) >= threshold for n in (u, v)
+        }
+        span_h = (max(times) - min(times)) / 3600.0 if len(times) > 1 else 0.0
         facts = ChainFacts(
-            motif_type="fan_out",
-            n_accounts=g.number_of_nodes(),
-            n_transactions=len(chain),
+            motif_type="suspicious_chain",
+            n_accounts=len(chain_accounts),
+            n_transactions=len(chain_edges),
             total_amount=float(sum(amounts)),
-            span_hours=24.0,
-            confidence=threshold,
+            span_hours=span_h,
+            confidence=float(sum(scores) / len(scores)),
             focus_account=account,
         )
         st.subheader("Auto-narrative")

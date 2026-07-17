@@ -126,13 +126,13 @@ def score_subgraph(req: ScoreRequest) -> ScoreResponse:
         )
 
     edges: list[ScoredEdge] = []
-    accounts: set[str] = set()
+    chain_accounts: set[str] = set()
     chain_amounts: list[float] = []
+    chain_scores: list[float] = []
     chain_times: list[float] = []
     for row in sub.iter_rows(named=True):
         score = float(row.get("score", 0.0))
         in_chain = score >= req.threshold
-        accounts.update((row["src"], row["dst"]))
         edges.append(
             ScoredEdge(
                 edge_id=int(row["edge_id"]),
@@ -145,18 +145,20 @@ def score_subgraph(req: ScoreRequest) -> ScoreResponse:
             )
         )
         if in_chain:
+            chain_accounts.update((row["src"], row["dst"]))
             chain_amounts.append(float(row.get("amount", 0.0)))
+            chain_scores.append(score)
             chain_times.append(float(row.get("t", 0.0)))
 
     n_chain = len(chain_amounts)
     span_hours = (max(chain_times) - min(chain_times)) / 3600.0 if len(chain_times) > 1 else 0.0
     facts = ChainFacts(
-        motif_type="fan_out",
-        n_accounts=len(accounts),
+        motif_type="suspicious_chain",
+        n_accounts=len(chain_accounts),
         n_transactions=n_chain,
         total_amount=float(sum(chain_amounts)),
         span_hours=span_hours,
-        confidence=req.threshold,
+        confidence=sum(chain_scores) / n_chain if n_chain else 0.0,
         focus_account=req.account,
     )
     narrative = (
