@@ -130,7 +130,7 @@ def save_scored_edges(ds: EdgeDataset, scores: np.ndarray, test_edge_ids: np.nda
     config.ensure_dirs()
     score_by_eid = {int(e): float(s) for e, s in zip(test_edge_ids, scores)}
     rows = []
-    for eid, s, d, t, y in zip(ds.edge_ids, ds.src, ds.dst, ds.times, ds.y):
+    for eid, s, d, t, y, amount in zip(ds.edge_ids, ds.src, ds.dst, ds.times, ds.y, ds.amounts):
         if int(eid) in score_by_eid:
             rows.append(
                 {
@@ -138,7 +138,7 @@ def save_scored_edges(ds: EdgeDataset, scores: np.ndarray, test_edge_ids: np.nda
                     "src": s,
                     "dst": d,
                     "t": float(t),
-                    "amount": 0.0,
+                    "amount": float(amount),
                     "is_laundering": int(y),
                     "score": score_by_eid[int(eid)],
                 }
@@ -185,7 +185,11 @@ def pick_trace(
             amounts.append(float(d["amount"]))
             times.append(float(d["t"]))
     span_h = (max(times) - min(times)) / 3600.0 if len(times) > 1 else 0.0
-    conf = float(np.mean([score_by_eid.get(e, 0.5) for e in eids])) if eids else 0.5
+    # Confidence = mean model score over the chain edges that were actually
+    # scored (test-set edges); defaulting unscored edges to 0.5 would pin the
+    # confidence to a meaningless midpoint.
+    scored = [score_by_eid[e] for e in eids if e in score_by_eid]
+    conf = float(np.mean(scored)) if scored else 0.5
     # hub = most-connected account among the chain
     focus = max(accounts, key=lambda n: g.degree(n)) if accounts else "n/a"
     facts = ChainFacts(
