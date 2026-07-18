@@ -2,9 +2,13 @@
 #
 # Reproduce end-to-end with:  dvc repro
 # The raw data is DVC-tracked, never committed to git (see data/README.md and
-# .gitignore). The current MVP wires every heavy stage through src.pipeline;
-# the stages below expose them individually so DVC can cache and skip unchanged
-# work. `download` needs Kaggle credentials in the environment.
+# .gitignore). `download` needs Kaggle credentials in the environment.
+#
+# The MVP is deliberately one orchestrated stage: run_mvp builds the temporal
+# multigraph, mines motifs, trains LightGBM + GNN on the temporal tri-split,
+# writes metrics.json, the six figures and the scored-edge artifact. Splitting
+# it into pseudo-stages would not add caching value (every stage would rerun
+# together anyway) and would misrepresent the actual execution flow.
 stages:
   download:
     cmd: python -c "from src import data_io; data_io.download_hi_small()"
@@ -14,48 +18,32 @@ stages:
       - data/raw/HI-Small_Trans.csv
       - data/raw/HI-Small_Patterns.txt
 
-  build_graph:
-    cmd: python -c "from src import pipeline, config; df, p = pipeline.load_and_prepare(config.DEFAULT_RUN)"
+  run_mvp:
+    cmd: python -c "from src import pipeline; pipeline.run_mvp(use_llm=False)"
     deps:
+      - src/config.py
       - src/data_io.py
       - src/graph_build.py
       - src/splits.py
       - src/motifs.py
       - src/features.py
-      - data/raw/HI-Small_Trans.csv
-      - data/raw/HI-Small_Patterns.txt
-
-  train_baseline:
-    cmd: python -c "from src import pipeline; pipeline.run_mvp(use_llm=False)"
-    deps:
       - src/baseline.py
       - src/lgbm_worker.py
-      - src/features.py
-      - src/metrics.py
-      - src/pipeline.py
-    outs:
-      - data/processed/edges_scored.parquet
-    metrics:
-      - outputs/metrics.json:
-          cache: false
-
-  train_gnn:
-    # The GNN is trained inside run_mvp above; this stage documents its inputs
-    # so a change to the GNN code invalidates the downstream figures.
-    cmd: python -c "import src.gnn"
-    deps:
       - src/gnn.py
-
-  figures:
-    cmd: python -c "import src.viz"
-    deps:
+      - src/metrics.py
       - src/viz.py
       - src/narrative.py
-      - outputs/metrics.json
+      - src/pipeline.py
+      - data/raw/HI-Small_Trans.csv
+      - data/raw/HI-Small_Patterns.txt
     outs:
+      - data/processed/edges_scored.parquet
       - outputs/figures/fig01_eda_imbalance.png
       - outputs/figures/fig02_motif_freq.png
       - outputs/figures/fig03_pr_curve.png
       - outputs/figures/fig04_precision_at_k.png
       - outputs/figures/fig05_ring_trace.png
       - outputs/figures/fig06_narrative_card.png
+    metrics:
+      - outputs/metrics.json:
+          cache: false
