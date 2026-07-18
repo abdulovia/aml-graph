@@ -59,9 +59,8 @@ def alert_reduction_at_recall(
     Returns the fraction of the population that still needs review to reach
     ``target_recall`` and the implied reduction versus reviewing everything.
     """
-    prec, rec, thr = precision_recall_curve(y_true, y_score)
-    # rec is decreasing over thresholds; find the highest threshold that still
-    # attains at least the target recall.
+    # Review alerts in descending-score order; count how many must be opened
+    # before the target fraction of true positives is recovered.
     order = np.argsort(-y_score)
     n = order.size
     positives = int(y_true.sum())
@@ -71,7 +70,6 @@ def alert_reduction_at_recall(
     needed = np.searchsorted(cum_tp, int(np.ceil(target_recall * positives)))
     needed = min(needed + 1, n)
     review_fraction = needed / n
-    _ = (prec, rec, thr)
     return {
         "target_recall": target_recall,
         "review_fraction": float(review_fraction),

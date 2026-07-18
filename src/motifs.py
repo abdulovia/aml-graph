@@ -284,8 +284,8 @@ def edge_features(
 
     hits = detect_all(g, windows, min_degree)
 
-    fan_out_edges = _union_edges(hits["fan_out"])
-    fan_in_edges = _union_edges(hits["fan_in"])
+    # fan-out/fan-in membership is carried by the window-degree features below;
+    # only the structural motifs need explicit membership flags.
     cycle_edges = _union_edges(hits["cycle"])
     gs_edges = _union_edges(hits["gather_scatter"])
     sg_edges = _union_edges(hits["scatter_gather"])
@@ -311,8 +311,6 @@ def edge_features(
             1.0 if (eid in gs_edges) else 0.0,
             1.0 if (eid in sg_edges) else 0.0,
         ]
-        # keep fan membership implicitly via degree features
-        _ = (fan_out_edges, fan_in_edges)
     return features, hits
 
 

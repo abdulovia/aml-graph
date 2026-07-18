@@ -18,7 +18,6 @@ import hashlib
 import json
 import os
 from dataclasses import asdict, dataclass
-from pathlib import Path
 
 from src import config
 
@@ -128,9 +127,3 @@ def llm_narrative(facts: ChainFacts, use_cache: bool = True) -> str:
     cache[key] = text
     _save_cache(cache)
     return text
-
-
-def facts_to_json(facts: ChainFacts, path: Path | None = None) -> None:
-    """Persist the facts used for a narrative alongside the metrics."""
-    path = path or (config.OUTPUTS / "narrative_facts.json")
-    path.write_text(json.dumps(asdict(facts), indent=2, ensure_ascii=False))

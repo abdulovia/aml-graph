@@ -44,19 +44,3 @@ def build_graph(df: pl.DataFrame) -> nx.MultiDiGraph:
             is_laundering=int(lbl[i]) if lbl[i] is not None else 0,
         )
     return g
-
-
-def edge_frame(g: nx.MultiDiGraph) -> pl.DataFrame:
-    """Flatten graph edges back into a Polars DataFrame keyed by ``edge_id``."""
-    rows = [
-        {
-            "edge_id": int(d["edge_id"]),
-            "src": u,
-            "dst": v,
-            "t": float(d["t"]),
-            "amount": float(d["amount"]),
-            "is_laundering": int(d["is_laundering"]),
-        }
-        for u, v, d in g.edges(data=True)
-    ]
-    return pl.DataFrame(rows).sort("t")
