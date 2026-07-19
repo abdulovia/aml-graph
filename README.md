@@ -67,18 +67,22 @@ export KAGGLE_USERNAME=... KAGGLE_KEY=...   # optional: enables data download
 
 ## Results
 
-Test set: 75,000 strictly-future edges, 2,304 illicit. Thresholds tuned for
-best minority-F1; alert-reduction reported at fixed recall = 0.50.
+Test set: 75,000 strictly-future edges, 2,304 illicit. Temporal tri-split
+(train / validation / test); each model's F1 threshold is chosen **on the
+validation slice, never on test**. Alert-reduction reported at fixed
+recall = 0.50.
 
 | Model     | Minority-F1 | PR-AUC | Precision@100 | Alert reduction |
 |-----------|:-----------:|:------:|:-------------:|:---------------:|
-| **LightGBM** | **0.419**   | **0.379** | **1.00**      | **91.9%**       |
-| GNN       | 0.248       | 0.189  | 0.71          | 86.5%           |
-| Random    | 0.061       | 0.033  | 0.07          | 52.0%           |
+| **LightGBM** | **0.409**   | **0.368** | **1.00**      | **91.3%**       |
+| GNN       | 0.223       | 0.238  | 1.00          | 85.9%           |
+| Random    | 0.060       | 0.031  | 0.06          | 49.8%           |
 
-The LightGBM baseline leads on this bounded sample; the GNN adds structural
-signal and both dramatically outperform random triage. At recall 0.50 the
-baseline lets analysts ignore ~92% of traffic.
+The LightGBM baseline leads on this bounded sample; the GNN (standardised
+features, LayerNorm, early stopping, leakage-safe inductive inference) adds
+structural signal — its top-100 alerts are all true positives — and both
+dramatically outperform random triage. At recall 0.50 the baseline lets
+analysts ignore ~91% of traffic.
 
 > **Prevalence disclosure.** The MVP works on a bounded subsample and **keeps
 > all positives**, inflating illicit prevalence to ~2% versus the true ~0.10%
