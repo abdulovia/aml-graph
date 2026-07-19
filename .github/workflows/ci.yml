@@ -17,11 +17,11 @@ jobs:
           python-version: "3.11"
 
       - name: Install lint/test dependencies
-        # Motif detectors + leakage tests need only these — no torch/CUDA in CI,
+        # Motif/metrics/leakage tests need only these — no torch/CUDA in CI,
         # keeping the pipeline fast. The full stack is in requirements.txt.
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest numpy networkx
+          pip install ruff pytest numpy networkx scikit-learn
 
       - name: Ruff (lint)
         run: ruff check src tests app
