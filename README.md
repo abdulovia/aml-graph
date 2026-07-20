@@ -2,11 +2,9 @@
 
 **Explainable money-laundering detection via quasi-temporal graph motifs — flag the ring, then explain it.**
 
-[![CI](https://github.com/OWNER/aml-graph/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/aml-graph/actions/workflows/ci.yml)
+[![CI](https://github.com/abdulovia/aml-graph/actions/workflows/ci.yml/badge.svg)](https://github.com/abdulovia/aml-graph/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
-
-> Replace `OWNER` in the badge URLs with the GitHub org/user once the repo is pushed.
 
 ## Problem
 
@@ -45,6 +43,9 @@ flowchart LR
 ## Quickstart
 
 ```bash
+# 0. Clone
+git clone git@github.com:abdulovia/aml-graph.git && cd aml-graph
+
 # 1. Local dev environment (venv + deps)
 make setup
 
@@ -113,7 +114,7 @@ aml-graph/
 ├── app/
 │   ├── streamlit_app.py    # interactive chain tracer
 │   └── api.py              # FastAPI /score_subgraph + /health
-├── tests/                  # motif + no-leakage tests (numpy+networkx only)
+├── tests/                  # motif + metrics + no-leakage tests (lightweight deps)
 ├── configs/config.yaml     # declarative run config
 ├── notebooks/mvp_aml.ipynb
 ├── outputs/                # figures + metrics.json (tracked)
