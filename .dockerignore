@@ -1,0 +1,22 @@
+# Keep the build context tiny: the raw data alone is ~0.5 GB and the venv is
+# multiple GB — neither belongs in the image (data/outputs are volume-mounted).
+.git
+.venv
+venv
+data
+notebooks
+docs
+tests
+.dvc
+.github
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+.DS_Store
+Makefile
+dvc.yaml
+docker-compose.yml
+.pre-commit-config.yaml
+README.md
+LICENSE

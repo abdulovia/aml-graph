@@ -2,34 +2,50 @@
 #
 # Secrets are never committed — they are read from the host environment:
 #   export ANTHROPIC_API_KEY=sk-...      # optional: enables LLM narratives
-#   export KAGGLE_API_TOKEN=...          # optional: enables data download
 #
 # Usage:
+#   docker compose up -d        # both services in the background
 #   docker compose up demo      # Streamlit UI on http://localhost:8501
-#   docker compose up api       # FastAPI service on http://localhost:8000
+#   docker compose up api       # FastAPI on http://localhost:8000/docs
 services:
   demo:
-    build: .
-    image: aml-graph:latest
+    build:
+      context: .
+      target: serve
+    image: aml-graph:serve
+    container_name: aml-graph-demo
     command:
       - streamlit
       - run
       - app/streamlit_app.py
       - --server.port=8501
       - --server.address=0.0.0.0
+      - --server.headless=true
     ports:
       - "8501:8501"
     environment:
       # Passed through from the host; unset is fine (features degrade gracefully).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN:-}
     volumes:
-      - ./data:/app/data
-      - ./outputs:/app/outputs
+      - ./data:/app/data:ro
+      - ./outputs:/app/outputs:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   api:
-    build: .
-    image: aml-graph:latest
+    build:
+      context: .
+      target: serve
+    image: aml-graph:serve
+    container_name: aml-graph-api
     command:
       - uvicorn
       - app.api:app
@@ -41,7 +57,16 @@ services:
       - "8000:8000"
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN:-}
     volumes:
-      - ./data:/app/data
-      - ./outputs:/app/outputs
+      - ./data:/app/data:ro
+      - ./outputs:/app/outputs:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s

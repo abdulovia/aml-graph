@@ -1,18 +1,18 @@
 # syntax=docker/dockerfile:1
 #
-# Reproducible CPU image for AML-Graph.
+# AML-Graph images (multi-stage):
 #
-# Targets a clean linux/amd64 environment — the standard pins in
-# requirements.txt (torch>=2.2, polars>=1.0) install cleanly here, so none of
-# the local Intel/Rosetta workarounds (torch==2.2.2, polars[rtcompat]) are
-# baked in. The LightGBM subprocess isolation in src/lgbm_worker.py is harmless
-# and remains.
+#   serve (default) — slim image for the demo surfaces (Streamlit + FastAPI).
+#                     No torch/lightgbm: the demos read the pre-computed
+#                     scored-edge artifact, so the image stays small and fast.
+#   train           — full stack (torch, torch-geometric, lightgbm, mlflow)
+#                     for reproducing the pipeline inside Docker:
+#                     docker build --target train -t aml-graph:train .
+#                     docker run --rm -v ./data:/app/data -v ./outputs:/app/outputs \
+#                       aml-graph:train python -c "from src import pipeline; pipeline.run_mvp()"
+#
+# Targets clean linux; none of the local Intel/Rosetta workarounds are baked in.
 FROM python:3.11-slim AS base
-
-# libgomp1 provides the OpenMP runtime LightGBM links against at import time.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -21,32 +21,39 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install dependencies first for better layer caching.
-COPY requirements.txt ./
+COPY requirements-serve.txt ./
 RUN python -m pip install --upgrade pip \
-    && pip install -r requirements.txt
+    && pip install -r requirements-serve.txt
 
-# ---------------------------------------------------------------------------
-# CUDA option (opt-in): to build a GPU image, comment out the CPU torch pin in
-# requirements.txt and uncomment the line below to pull the cu121 wheels.
-# RUN pip install --index-url https://download.pytorch.org/whl/cu121 \
-#     torch>=2.2 torch-geometric>=2.5
-# ---------------------------------------------------------------------------
-
-# Project code and pre-computed artifacts (figures + metrics).
 COPY src ./src
 COPY app ./app
 COPY configs ./configs
 COPY pyproject.toml ./
+# Pre-computed artifacts so the image also works without volume mounts.
 COPY outputs ./outputs
 
-# Run as a non-root user.
 RUN useradd --create-home --uid 1000 appuser \
     && chown -R appuser:appuser /app
+
+# --- full training stack (opt-in target) -----------------------------------
+FROM base AS train
+USER root
+# libgomp1 provides the OpenMP runtime LightGBM links against at import time.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+# CUDA option: swap the torch pin for the cu121 wheels if a GPU is available.
+# RUN pip install --index-url https://download.pytorch.org/whl/cu121 "torch>=2.2"
 USER appuser
 
-EXPOSE 8501
+# --- default: slim serving image --------------------------------------------
+FROM base AS serve
+USER appuser
 
-# Default: launch the Streamlit demo. Override with docker-compose for the API.
+EXPOSE 8501 8000
+
+# Default: the Streamlit demo. docker-compose overrides this for the API.
 CMD ["streamlit", "run", "app/streamlit_app.py", \
      "--server.port=8501", "--server.address=0.0.0.0"]
