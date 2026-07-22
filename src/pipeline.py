@@ -65,14 +65,25 @@ def motif_participation(ds: EdgeDataset) -> dict[str, tuple[int, int]]:
     return out
 
 
+def _rank01(scores: np.ndarray) -> np.ndarray:
+    """Map scores to their rank percentile in ``[0, 1]`` (robust score fusion)."""
+    order = scores.argsort().argsort().astype(np.float64)
+    return order / max(scores.size - 1, 1)
+
+
 def run_models(
     ds: EdgeDataset, cfg: RunConfig
 ) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray, dict[str, float]]:
-    """Train baseline + GNN on a leakage-free temporal tri-split.
+    """Train baseline + GNN (+ their hybrid) on a leakage-free temporal tri-split.
 
     Models train on the inner-train slice only; the validation slice (strictly
     between train and test in time) is used to pick each model's F1 threshold —
     never the test set. The GNN additionally uses validation for early stopping.
+
+    The **Hybrid** is the project thesis made concrete: an equal-weight fusion
+    of the two models' rank percentiles. The 50/50 weights are fixed a priori —
+    nothing is tuned on validation or test — so its numbers are as honest as
+    the base models'.
 
     Returns:
         ``(scores_by_model, y_test, test_edge_ids, thresholds)`` where the test
@@ -92,12 +103,25 @@ def run_models(
 
     gnn_val, gnn_test = train_gnn(ds.src, ds.dst, ds.X, ds.y, sp.tr_idx, sp.val_idx, sp.test_idx)
 
+    hybrid_val = 0.5 * _rank01(lgbm_val) + 0.5 * _rank01(gnn_val)
+    hybrid_test = 0.5 * _rank01(lgbm_test) + 0.5 * _rank01(gnn_test)
+
     rng = np.random.default_rng(config.SEED)
     rand_val = rng.random(y_val.size)
     rand_test = rng.random(y_test.size)
 
-    val_scores = {"GNN": gnn_val, "LightGBM": lgbm_val, "Random": rand_val}
-    test_scores = {"GNN": gnn_test, "LightGBM": lgbm_test, "Random": rand_test}
+    val_scores = {
+        "GNN": gnn_val,
+        "LightGBM": lgbm_val,
+        "Hybrid": hybrid_val,
+        "Random": rand_val,
+    }
+    test_scores = {
+        "GNN": gnn_test,
+        "LightGBM": lgbm_test,
+        "Hybrid": hybrid_test,
+        "Random": rand_test,
+    }
     thresholds = {
         name: metrics.best_f1_threshold(y_val, val_scores[name])[0] for name in test_scores
     }

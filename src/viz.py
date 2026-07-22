@@ -25,6 +25,7 @@ LICIT = "#7f8c8d"
 GNN_C = "#2c3e50"
 LGBM_C = "#2980b9"
 RAND_C = "#bdc3c7"
+HYBRID_C = "#27ae60"
 
 plt.rcParams.update({"figure.dpi": 130, "font.size": 10, "axes.grid": True, "grid.alpha": 0.25})
 
@@ -103,7 +104,7 @@ def fig02_motif_freq(motif_illicit_rate: dict[str, tuple[int, int]]) -> None:
 
 def fig03_pr_curve(y_true: np.ndarray, scores: dict[str, np.ndarray]) -> None:
     """Precision-recall curves for GNN vs LightGBM vs random."""
-    colours = {"GNN": GNN_C, "LightGBM": LGBM_C, "Random": RAND_C}
+    colours = {"GNN": GNN_C, "LightGBM": LGBM_C, "Hybrid": HYBRID_C, "Random": RAND_C}
     fig, ax = plt.subplots(figsize=(7, 6))
     for name, s in scores.items():
         prec, rec, _ = precision_recall_curve(y_true, s)
@@ -128,7 +129,7 @@ def fig04_precision_at_k(pk: dict[str, dict[str, float]]) -> None:
     models = list(pk.keys())
     x = np.arange(len(ks))
     w = 0.8 / max(len(models), 1)
-    colours = {"GNN": GNN_C, "LightGBM": LGBM_C, "Random": RAND_C}
+    colours = {"GNN": GNN_C, "LightGBM": LGBM_C, "Hybrid": HYBRID_C, "Random": RAND_C}
     fig, ax = plt.subplots(figsize=(8, 5))
     for i, m in enumerate(models):
         ax.bar(x + i * w, [pk[m][k] for k in ks], w, label=m, color=colours.get(m))
