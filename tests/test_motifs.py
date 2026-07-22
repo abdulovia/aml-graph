@@ -39,6 +39,40 @@ def test_cycle_requires_increasing_time():
     assert motifs.detect_cycles(bad, max_len=6, window_h=168) == []
 
 
+def test_fan_out_membership_excludes_edges_outside_burst():
+    # 3-edge burst at t=0..2h plus one unrelated transfer weeks later: the
+    # burst is a fan-out, but the late edge must NOT be dragged into it.
+    g = make_graph([("A", "B", 0, 10), ("A", "C", 1, 10), ("A", "D", 2, 10), ("A", "E", 500, 10)])
+    hits = motifs.detect_fan_out(g, window_h=24, min_degree=3)
+    assert len(hits) == 1
+    assert hits[0].edge_ids == {0, 1, 2}  # edge 3 (t=500h) excluded
+
+
+def test_gather_scatter_requires_gather_before_scatter():
+    # Scatter first (t=0..2), gather afterwards (t=10..12): NOT gather-scatter.
+    edges = [
+        ("H", "D1", 0, 9),
+        ("H", "D2", 1, 9),
+        ("H", "D3", 2, 9),
+        ("S1", "H", 10, 10),
+        ("S2", "H", 11, 10),
+        ("S3", "H", 12, 10),
+    ]
+    hits = motifs.detect_gather_scatter(make_graph(edges), window_h=72, min_degree=3)
+    assert hits == []
+
+
+def test_amount_burst_is_causal():
+    # The first transfer of a sender has no history -> burst must be 0; a later
+    # spike is scored against PRIOR history only.
+    edges = [("A", "B", 0, 100), ("A", "C", 1, 100), ("A", "D", 2, 100), ("A", "E", 3, 9000)]
+    g = make_graph(edges)
+    feats, _ = motifs.edge_features(g, MotifWindows(), min_degree=5)
+    burst_idx = motifs.FEATURE_NAMES.index("amount_burst")
+    assert feats[0][burst_idx] == 0.0  # first transfer: no prior history
+    assert feats[3][burst_idx] > 3.0  # the 9000 spike vs three 100s before it
+
+
 def test_gather_scatter():
     edges = [
         ("S1", "H", 0, 10),

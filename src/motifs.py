@@ -10,6 +10,12 @@ Every detector operates on a :class:`networkx.MultiDiGraph` whose edges carry:
 The detectors are deliberately transparent (no learned parameters) so an AML
 analyst can read the rule that fired. They also emit a per-edge feature vector
 consumed by the LightGBM baseline and as node/edge attributes by the GNN.
+
+Deployment semantics: the window features look *forward* from each transaction
+(``[t, t + window]``) — the natural definition for burst motifs. In production
+this corresponds to raising the alert up to one window after the transaction
+(e.g. 24h for fans), which is standard for scheme-level AML monitoring; the
+``amount_burst`` feature is strictly causal (prior history only).
 """
 
 from __future__ import annotations
@@ -65,14 +71,16 @@ def _in_edges(g: nx.MultiDiGraph, node: str) -> list[tuple[float, str, int]]:
     return sorted(rows)
 
 
-def _window_distinct_counts(rows: list[tuple[float, str, int]], window_s: float) -> dict[int, int]:
-    """For each edge, count distinct counterparties within a forward window.
+def _window_spans(
+    rows: list[tuple[float, str, int]], window_s: float
+) -> list[tuple[int, int, int]]:
+    """Sweep a forward time window over time-sorted ``(t, party, edge_id)`` rows.
 
-    Given time-sorted ``(t, party, edge_id)`` rows, returns ``edge_id -> number
-    of distinct parties`` observed in ``[t, t + window_s]``. Two-pointer sweep,
-    O(n log n) per node.
+    For every left index returns ``(left, right_exclusive, distinct_parties)``
+    describing the window ``[t_left, t_left + window_s]``. Two-pointer sweep,
+    O(n) after sorting.
     """
-    result: dict[int, int] = {}
+    spans: list[tuple[int, int, int]] = []
     n = len(rows)
     right = 0
     counts: dict[str, int] = defaultdict(int)
@@ -84,44 +92,66 @@ def _window_distinct_counts(rows: list[tuple[float, str, int]], window_s: float)
         while right < n and rows[right][0] <= rows[left][0] + window_s:
             counts[rows[right][1]] += 1
             right += 1
-        result[rows[left][2]] = len([c for c in counts.values() if c > 0])
+        spans.append((left, right, len(counts)))
         # Drop the left endpoint before it leaves the window next iteration.
         party = rows[left][1]
         counts[party] -= 1
         if counts[party] <= 0:
             counts.pop(party, None)
-    return result
+    return spans
+
+
+def _window_distinct_counts(rows: list[tuple[float, str, int]], window_s: float) -> dict[int, int]:
+    """Per-edge distinct-counterparty count within the edge's forward window."""
+    return {rows[left][2]: cnt for left, _, cnt in _window_spans(rows, window_s)}
+
+
+def _burst_edges(rows: list[tuple[float, str, int]], window_s: float, min_degree: int) -> set[int]:
+    """Edge ids that belong to at least one qualifying burst window.
+
+    Only edges inside a window that actually reaches ``min_degree`` distinct
+    counterparties are members — a node's unrelated transfers outside its burst
+    are NOT dragged into the motif.
+    """
+    member: set[int] = set()
+    for left, right, cnt in _window_spans(rows, window_s):
+        if cnt >= min_degree:
+            member.update(rows[i][2] for i in range(left, right))
+    return member
 
 
 # --- Detectors -------------------------------------------------------------
 def detect_fan_out(g: nx.MultiDiGraph, window_h: float, min_degree: int) -> list[MotifHit]:
-    """1 -> N: a node paying many distinct accounts inside one time window."""
+    """1 -> N: a node paying many distinct accounts inside one time window.
+
+    Only the edges inside a qualifying burst window are motif members — the
+    node's unrelated transfers outside the burst are excluded.
+    """
     hits: list[MotifHit] = []
     window_s = window_h * HOUR_S
     for node in g.nodes:
         rows = _out_edges(g, node)
         if len(rows) < min_degree:
             continue
-        counts = _window_distinct_counts(rows, window_s)
-        peak = max(counts.values(), default=0)
-        if peak >= min_degree:
-            eids = {eid for _, _, eid in rows}
+        eids = _burst_edges(rows, window_s, min_degree)
+        if eids:
             hits.append(MotifHit("fan_out", eids, node))
     return hits
 
 
 def detect_fan_in(g: nx.MultiDiGraph, window_h: float, min_degree: int) -> list[MotifHit]:
-    """N -> 1: a node receiving from many distinct accounts in one window."""
+    """N -> 1: a node receiving from many distinct accounts in one window.
+
+    Only the edges inside a qualifying burst window are motif members.
+    """
     hits: list[MotifHit] = []
     window_s = window_h * HOUR_S
     for node in g.nodes:
         rows = _in_edges(g, node)
         if len(rows) < min_degree:
             continue
-        counts = _window_distinct_counts(rows, window_s)
-        peak = max(counts.values(), default=0)
-        if peak >= min_degree:
-            eids = {eid for _, _, eid in rows}
+        eids = _burst_edges(rows, window_s, min_degree)
+        if eids:
             hits.append(MotifHit("fan_in", eids, node))
     return hits
 
@@ -185,25 +215,29 @@ def _temporal_cycle_edges(
 
 
 def detect_gather_scatter(g: nx.MultiDiGraph, window_h: float, min_degree: int) -> list[MotifHit]:
-    """N -> 1 -> M: a hub gathers from many, then scatters to many."""
+    """N -> 1 -> M: a hub gathers from many, then scatters to many.
+
+    Temporal definition: at least ``min_degree`` distinct senders pay the hub
+    within the ``window_h`` hours *preceding* its first outgoing transfer, and
+    at least ``min_degree`` distinct recipients are paid within ``window_h``
+    hours *after* it. Only those windowed edges are motif members, so the
+    gather-then-scatter ordering is actually enforced.
+    """
     hits: list[MotifHit] = []
     window_s = window_h * HOUR_S
     for node in g.nodes:
         ins = _in_edges(g, node)
         outs = _out_edges(g, node)
-        n_in = len({u for _, u, _ in ins})
-        n_out = len({v for _, v, _ in outs})
-        if n_in < min_degree or n_out < min_degree:
+        if len(ins) < min_degree or len(outs) < min_degree:
             continue
-        last_in = max((t for t, _, _ in ins), default=None)
-        first_out = min((t for t, _, _ in outs), default=None)
-        # gather must (mostly) precede scatter within the window
-        if last_in is None or first_out is None:
-            continue
-        if first_out >= min((t for t, _, _ in ins), default=first_out) and (
-            first_out - min((t for t, _, _ in ins), default=first_out) <= window_s
+        first_out = outs[0][0]
+        gather = [(t, u, e) for t, u, e in ins if first_out - window_s <= t <= first_out]
+        scatter = [(t, v, e) for t, v, e in outs if first_out <= t <= first_out + window_s]
+        if (
+            len({u for _, u, _ in gather}) >= min_degree
+            and len({v for _, v, _ in scatter}) >= min_degree
         ):
-            eids = {e for _, _, e in ins} | {e for _, _, e in outs}
+            eids = {e for _, _, e in gather} | {e for _, _, e in scatter}
             hits.append(MotifHit("gather_scatter", eids, node))
     return hits
 
@@ -292,21 +326,19 @@ def edge_features(
 
     fan_out_counts = _per_edge_window_degree(g, windows.fan_window_h, outgoing=True)
     fan_in_counts = _per_edge_window_degree(g, windows.fan_window_h, outgoing=False)
-    node_amount_stats = _node_amount_stats(g)
+    amount_burst = _causal_amount_burst(g)
 
     features: dict[int, list[float]] = {}
     for u, v, d in g.edges(data=True):
         eid = int(d["edge_id"])
         amount = float(d.get("amount", 0.0))
-        mean, std = node_amount_stats.get(u, (amount, 1.0))
-        burst = (amount - mean) / (std + 1e-6)
         reciprocity = 1.0 if g.has_edge(v, u) else 0.0
         features[eid] = [
             float(fan_out_counts.get(eid, 0)),
             float(fan_in_counts.get(eid, 0)),
             1.0 if eid in cycle_edges else 0.0,
             reciprocity,
-            burst,
+            amount_burst.get(eid, 0.0),
             math.log1p(max(amount, 0.0)),
             1.0 if (eid in gs_edges) else 0.0,
             1.0 if (eid in sg_edges) else 0.0,
@@ -332,19 +364,30 @@ def _per_edge_window_degree(g: nx.MultiDiGraph, window_h: float, outgoing: bool)
     return counts
 
 
-def _node_amount_stats(g: nx.MultiDiGraph) -> dict[str, tuple[float, float]]:
-    """Mean/std of each node's outgoing amounts (for the amount-burst feature)."""
-    sums: dict[str, float] = defaultdict(float)
-    sqs: dict[str, float] = defaultdict(float)
-    n: dict[str, int] = defaultdict(int)
+def _causal_amount_burst(g: nx.MultiDiGraph) -> dict[int, float]:
+    """Per-edge amount z-score against the sender's *prior* outgoing history.
+
+    Causal by construction: the statistic for an edge at time ``t`` uses only
+    the sender's transfers strictly before ``t`` (expanding mean/std), so it is
+    computable in production at alert time and leaks no future information into
+    training. The sender's first transfer scores 0 (no history yet).
+    """
+    per_node: dict[str, list[tuple[float, int, float]]] = defaultdict(list)
     for u, _, d in g.edges(data=True):
-        a = float(d.get("amount", 0.0))
-        sums[u] += a
-        sqs[u] += a * a
-        n[u] += 1
-    stats: dict[str, tuple[float, float]] = {}
-    for node in n:
-        mean = sums[node] / n[node]
-        var = max(sqs[node] / n[node] - mean * mean, 0.0)
-        stats[node] = (mean, var**0.5)
-    return stats
+        per_node[u].append((float(d["t"]), int(d["edge_id"]), float(d.get("amount", 0.0))))
+
+    burst: dict[int, float] = {}
+    for rows in per_node.values():
+        rows.sort()
+        count, mean, m2 = 0, 0.0, 0.0  # Welford's online moments
+        for _, eid, amount in rows:
+            if count == 0:
+                burst[eid] = 0.0
+            else:
+                std = (m2 / count) ** 0.5
+                burst[eid] = (amount - mean) / (std + 1e-6)
+            count += 1
+            delta = amount - mean
+            mean += delta / count
+            m2 += delta * (amount - mean)
+    return burst
